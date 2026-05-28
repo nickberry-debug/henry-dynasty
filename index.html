@@ -1,0 +1,166 @@
+/**
+ * GET /api/netsuite/shipments
+ *
+ * Pulls open Sales Orders and Transfer Orders from NetSuite
+ * to sync / validate against the truck schedule.
+ *
+ * Query params:
+ *   ?days=30   - how many days back to look (default 60)
+ *   ?type=so   - "so" for sales orders, "to" for transfer orders, omit for both
+ */
+
+const { buildAuthHeader, nsBaseUrl } = require("../_nsAuth");
+
+const SO_QUERY = (days) => `
+  SELECT
+    t.id,
+    t.tranid           AS poNumber,
+    t.trandate         AS tranDate,
+    t.shipdate         AS shipDate,
+    e.companyname      AS customerName,
+    t.status,
+    t.memo,
+    t.orderstatus,
+    SUM(tl.quantity)   AS totalCases
+  FROM
+    transaction t
+    LEFT JOIN transactionline tl ON tl.transaction = t.id AND tl.mainline = 'F'
+    LEFT JOIN entity e ON e.id = t.entity
+  WHERE
+    t.type = 'SalesOrd'
+    AND t.voided = 'F'
+    AND t.trandate >= TO_DATE('${daysAgo(days)}', 'YYYY-MM-DD')
+    AND t.status NOT IN ('SalesOrd:H', 'SalesOrd:C')
+  GROUP BY
+    t.id, t.tranid, t.trandate, t.shipdate, e.companyname, t.status, t.memo, t.orderstatus
+  ORDER BY
+    t.shipdate ASC
+`.trim();
+
+const TO_QUERY = (days) => `
+  SELECT
+    t.id,
+    t.tranid           AS toNumber,
+    t.trandate         AS tranDate,
+    t.shipdate         AS shipDate,
+    fl.name            AS fromLocation,
+    tl2.name           AS toLocation,
+    t.status,
+    t.memo
+  FROM
+    transaction t
+    LEFT JOIN location fl ON fl.id = t.location
+    LEFT JOIN location tl2 ON tl2.id = t.transferlocation
+  WHERE
+    t.type = 'TrnfrOrd'
+    AND t.voided = 'F'
+    AND t.trandate >= TO_DATE('${daysAgo(days)}', 'YYYY-MM-DD')
+    AND t.status NOT IN ('TrnfrOrd:C')
+  ORDER BY
+    t.shipdate ASC
+`.trim();
+
+function daysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().split("T")[0];
+}
+
+async function runSuiteQL(query) {
+  const url  = `${nsBaseUrl()}/query/v1/suiteql`;
+  const auth = buildAuthHeader("POST", url);
+  const res  = await fetch(url, {
+    method:  "POST",
+    headers: {
+      "Authorization": auth,
+      "Content-Type":  "application/json",
+      "Prefer":        "transient",
+    },
+    body: JSON.stringify({ q: query }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`SuiteQL failed (${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
+module.exports = async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+
+  const days = parseInt(req.query?.days) || 60;
+  const type = req.query?.type || "both";
+
+  try {
+    const results = {};
+
+    if (type === "so" || type === "both") {
+      const soData = await runSuiteQL(SO_QUERY(days));
+      results.salesOrders = (soData.items || []).map(row => ({
+        id:           row.id,
+        poNumber:     row.ponumber || "",
+        tranDate:     row.trandate || "",
+        shipDate:     row.shipdate || "",
+        customer:     row.customername || "",
+        status:       mapSOStatus(row.status),
+        memo:         row.memo || "",
+        totalCases:   parseFloat(row.totalcases) || 0,
+        type:         "salesorder",
+      }));
+    }
+
+    if (type === "to" || type === "both") {
+      const toData = await runSuiteQL(TO_QUERY(days));
+      results.transferOrders = (toData.items || []).map(row => ({
+        id:           row.id,
+        toNumber:     row.tonumber || "",
+        tranDate:     row.trandate || "",
+        shipDate:     row.shipdate || "",
+        fromLocation: row.fromlocation || "",
+        toLocation:   row.tolocation  || "",
+        status:       mapTOStatus(row.status),
+        memo:         row.memo || "",
+        type:         "transferorder",
+      }));
+    }
+
+    return res.status(200).json({
+      success:  true,
+      ...results,
+      pulledAt: new Date().toISOString(),
+      daysBack: days,
+    });
+
+  } catch (err) {
+    console.error("[Shipments] Error:", err);
+    return res.status(500).json({ error: "Internal server error", message: err.message });
+  }
+};
+
+function mapSOStatus(nsStatus) {
+  const map = {
+    "SalesOrd:A": "Pending Approval",
+    "SalesOrd:B": "Pending Fulfillment",
+    "SalesOrd:D": "Partially Fulfilled",
+    "SalesOrd:E": "Pending Billing/Partially Fulfilled",
+    "SalesOrd:F": "Pending Billing",
+    "SalesOrd:G": "Billed",
+    "SalesOrd:H": "Closed",
+  };
+  return map[nsStatus] || nsStatus || "Unknown";
+}
+
+function mapTOStatus(nsStatus) {
+  const map = {
+    "TrnfrOrd:A": "Pending Approval",
+    "TrnfrOrd:B": "Pending Receipt",
+    "TrnfrOrd:D": "Partially Received",
+    "TrnfrOrd:E": "Received",
+    "TrnfrOrd:C": "Closed",
+  };
+  return map[nsStatus] || nsStatus || "Unknown";
+}
