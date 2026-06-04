@@ -14,6 +14,7 @@ import { useMogul, listMogulStudios } from "../mogul/store";
 import { useCosmic } from "../cosmic/store";
 import { useTemporal } from "../temporal/store";
 import { useDungeon } from "../dungeon/state/store";
+import { useBuildamonster } from "../buildamonster/state/store";
 import { useMemo } from "react";
 
 // Version label rendered in the Landing footer. Bump this and
@@ -112,6 +113,10 @@ export function Landing() {
     : dungeonHeroes.length > 0
       ? `${dungeonHeroes.length} saved heroes`
       : "Forge a hero, descend 10 floors";
+  const buildamonsterMonsters = useBuildamonster(s => s.monsters);
+  const buildamonsterStatus = buildamonsterMonsters.length > 0
+    ? `${buildamonsterMonsters.length} monster${buildamonsterMonsters.length === 1 ? "" : "s"} · ${buildamonsterMonsters.reduce((sum, m) => sum + m.wins + m.losses, 0)} battles`
+    : "Build your first monster";
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [keyStatus, setKeyStatus] = useState({ ant: hasAnthropicKey(), oai: hasOpenAIKey() });
@@ -211,7 +216,7 @@ export function Landing() {
             className="text-sm sm:text-base mt-4 max-w-lg mx-auto leading-relaxed"
             style={{ color: "#b5c0d4" }}
           >
-            Ten worlds, one playroom. Pick anything — they all save independently.
+            Eleven worlds, one playroom. Pick anything — they all save independently.
           </motion.p>
         </motion.header>
 
@@ -325,6 +330,17 @@ export function Landing() {
             bg="linear-gradient(135deg, rgba(60,15,8,0.95), rgba(20,8,18,0.85))"
             onClick={() => navigate("/dungeon")}
             delay={0.68}
+          />
+          <GameCard
+            emoji="🧟"
+            name="Build-a-Monster Battle"
+            subtitle="Create & Battle"
+            description="Combine heads, bodies, legs, and accessories to craft unique monsters. Battle them in the arena and watch your creations level up and gain experience."
+            status={buildamonsterStatus}
+            accent="#d946ef"
+            bg="linear-gradient(135deg, rgba(60,8,30,0.95), rgba(20,5,15,0.85))"
+            onClick={() => navigate("/buildamonster")}
+            delay={0.75}
           />
         </div>
 

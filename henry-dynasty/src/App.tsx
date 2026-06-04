@@ -132,6 +132,8 @@ import PotionLabGrimoire from "./potionlab/pages/Grimoire";
 import PotionLabShelf from "./potionlab/pages/PotionShelf";
 // Dungeon Crawler — 10th game (Minecraft Dungeons + Diablo hybrid).
 import { DungeonHub, DungeonSelect, DungeonRun } from "./dungeon";
+// Build-a-Monster Battle — 11th game (Monster creation and battle)
+import { BuildamonsterHub, BuildamonsterCreate, BuildamonsterBattle } from "./buildamonster";
 import { useStore } from "./store";
 import { CommandBar } from "./components/CommandBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -318,6 +320,11 @@ function Router() {
         <Route path="/dungeon" element={<R><DungeonHub /></R>} />
         <Route path="/dungeon/select" element={<R><DungeonSelect /></R>} />
         <Route path="/dungeon/run" element={<R><DungeonRun /></R>} />
+        {/* Build-a-Monster Battle — 11th game */}
+        <Route path="/buildamonster" element={<R><BuildamonsterHub /></R>} />
+        <Route path="/buildamonster/create" element={<R><BuildamonsterCreate /></R>} />
+        <Route path="/buildamonster/battle" element={<R><BuildamonsterBattle /></R>} />
+        <Route path="/buildamonster/gallery" element={<R><BuildamonsterBattle /></R>} />
         <Route path="/olympus/party" element={<R><OlympusParty /></R>} />
         {/* Olympus mode — separate routing tree, own theme + chrome */}
         <Route path="/olympus" element={<R><OlympusShell /></R>}>
